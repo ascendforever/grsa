@@ -547,7 +547,7 @@ cdef class PrivateKey(AbstractKey):
         cdef bytes cleartext = HASH_ASN1[hash_method] + hash_value
         return self.sign_hash_optimized(cleartext, blind_factor_generation_attempts=blind_factor_generation_attempts)
     cpdef bytes sign(self, bytes message, str hash_method='SHA-512', cython.uint blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS):
-        cdef bytes cleartext = HASH_ASN1[method] + compute_hash(data, HASH_METHODS[hash_method])
+        cdef bytes cleartext = HASH_ASN1[hash_method] + compute_hash(data, HASH_METHODS[hash_method])
         return self.sign_hash_optimized(cleartext, blind_factor_generation_attempts=blind_factor_generation_attempts)
 
 
