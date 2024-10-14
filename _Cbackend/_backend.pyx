@@ -41,6 +41,7 @@ __all__ = [
 ]
 
 from grsa.__common import *
+import cython
 from cpython cimport int as PyInt
 
 # cimport cython
@@ -53,6 +54,12 @@ from cpython cimport int as PyInt
 #     print(PyInt is builtins.int)
 # test()
 
+cdef extern from "<math.h>" nogil:
+    float ceilf(float)
+
+cpdef unsigned long upy_size(PyInt x):        return <unsigned long>ceilf(int.bit_length(x) / 8) # yes ceilf is faster than math.ceil!
+
+
 class NotRelativePrimeError(ValueError):
     def __init__(self, PyInt a, PyInt b, PyInt d, str msg='') -> None:
         super().__init__(msg or f"{a} and {b} are not relatively prime, divider={d}")
@@ -60,21 +67,21 @@ class NotRelativePrimeError(ValueError):
         self.b = b
         self.d = d
 
-cdef cython.uint DEFAULT_EXPONENT = 65537
+cdef unsigned long DEFAULT_EXPONENT = 65537
 cdef object ALGORITHM = os.urandom # secrets.token_bytes # os.urandom
 
 cdef inline bytes generate_random_bits(const cython.ushort nbits):
     cdef cython.ushort nbytes
-    cdef cython.uchar rbits
+    cdef unsigned char rbits
     nbytes, rbits = divmod(nbits, 8)
     cdef bytes randomdata = ALGORITHM(nbytes)
     # add remaining random bits
-    cdef cython.uchar randomvalue # cython.uchar
+    cdef unsigned char randomvalue # unsigned char
     if rbits > 0:
         randomvalue = ALGORITHM(1)[0] >> (8-rbits) # ORD IS SLOWER # ord(ALGORITHM(1))
         randomdata = struct.pack("B", randomvalue) + randomdata # yes struct.pack is better than using bytes((randomvalue,))
     return randomdata
-cdef inline PyInt generate_random_int(const cython.ushort nbits):
+cpdef inline PyInt generate_random_int(const cython.ushort nbits):
     cdef bytes randomdata = generate_random_bits(nbits)
     cdef PyInt value = PyInt.from_bytes(randomdata, 'big', signed=False)
     # This PyInt conversion is necessary - yes it is disgusting
@@ -85,13 +92,13 @@ cdef inline PyInt generate_random_odd_int(const cython.ushort nbits):
     # assert value | 1 == value | PyInt(1) # test works
     return value | 1 # Make sure it's odd
 
-cdef inline cython.uchar get_primality_testing_rounds(const cython.ushort bitsize) nogil:
+cdef inline unsigned char get_primality_testing_rounds(const cython.ushort bitsize) nogil:
     if bitsize >= 1536: return 3
     if bitsize >= 1024: return 4
     if bitsize >= 512: return 7
     # default for very low bit sizes
     return 10
-cdef inline PyInt randint(PyInt maxvalue, cython.ushort bit_size): # cython.uint
+cdef inline PyInt randint(PyInt maxvalue, cython.ushort bit_size): # unsigned int
     cdef cython.ushort tries = 0
     cdef PyInt value
     cdef object __generate_random_int = generate_random_int
@@ -113,11 +120,11 @@ cdef inline cython.bint miller_rabin_primality_testing(PyInt n, PyInt k):
     # decompose (n - 1) to write it as (2 ** r) * d
     # while d is even divide it by 2 and raise the exponent.
     cdef PyInt d = n - 1 # 204 byte integer
-    cdef cython.uchar r = 0
+    cdef unsigned char r = 0
     while not (d & 1):
         r += 1
         d >>= 1
-    cdef cython.uchar r_minus_1 = r - 1
+    cdef unsigned char r_minus_1 = r - 1
     cdef PyInt n_minus_1 = n - 1
     cdef PyInt n_minus_3 = n - 3
     cdef cython.ushort n_minus_3_bit_size = n_minus_3.bit_length()
@@ -144,7 +151,7 @@ cdef inline cython.bint is_prime(PyInt number):
     # assert number & 1 == number & PyInt(1) # test works
     if not (number & 1): # even check
         return False
-    cdef cython.uchar k = get_primality_testing_rounds(number.bit_length())
+    cdef unsigned char k = get_primality_testing_rounds(number.bit_length())
     return miller_rabin_primality_testing(number, k + 1) # k is minimum so + 1
 cdef inline cython.bint is_prime_fast(PyInt n): # unpredictable speed boost/loss - likely dont use it
     if n < 10: # small number optimization
@@ -154,17 +161,17 @@ cdef inline cython.bint is_prime_fast(PyInt n): # unpredictable speed boost/loss
     if n < 2:
         return False
     cdef cython.ushort bitsize = n.bit_length()
-    cdef cython.uchar k
+    cdef unsigned char k
     if bitsize >= 1536: k = 4
     if bitsize >= 1024: k = 5
     if bitsize >= 512: k = 8
     k = 11
     cdef PyInt d = n - 1 # 204 byte integer
-    cdef cython.uchar r = 0
+    cdef unsigned char r = 0
     while not (d & 1):
         r += 1
         d >>= 1
-    cdef cython.uchar r_minus_1 = r - 1
+    cdef unsigned char r_minus_1 = r - 1
     cdef PyInt n_minus_1 = n - 1
     cdef PyInt n_minus_3 = n - 3
     cdef cython.ushort n_minus_3_bit_size = n_minus_3.bit_length()
@@ -213,7 +220,7 @@ cdef inline tuple find_p_q(cython.ushort nbits):
         p = get_prime(pbits)
     # http://www.di-mgt.com.au/rsa_alg.html#crt
     return (p,q) if p > q else (q,p)
-cdef inline tuple extended_gcd(PyInt a, PyInt b): # (cython.uint,cython.uint,cython.uint)
+cdef inline tuple extended_gcd(PyInt a, PyInt b): # (unsigned int,unsigned int,unsigned int)
     # """[Created 12/10/21]"""
     cdef PyInt x = 0
     cdef PyInt y = 1
@@ -238,7 +245,7 @@ cdef inline object inverse(PyInt x, PyInt n):
         raise NotRelativePrimeError(x, n, divider)
     return inv
 # needs to return a pyobject because this raises errors (?)
-cdef inline tuple calculate_keys_custom_exponent(PyInt p, PyInt q, cython.uint exponent):
+cdef inline tuple calculate_keys_custom_exponent(PyInt p, PyInt q, unsigned int exponent):
     # """[Created 12/10/21]"""
     cdef PyInt phi_n = (p - 1) * (q - 1)
     cdef PyInt d
@@ -250,9 +257,9 @@ cdef inline tuple calculate_keys_custom_exponent(PyInt p, PyInt q, cython.uint e
         raise ValueError # no message b/c we will always except the error
     return exponent, d
 
-cpdef tuple generate_keys(const cython.ushort nbits, cython.uint exponent=DEFAULT_EXPONENT):
+cpdef tuple generate_keys(const cython.ushort nbits, unsigned long exponent=DEFAULT_EXPONENT):
     # """[Created 12/10/21]"""
-    cdef cython.uint nbits_floordiv2 = nbits // 2
+    cdef unsigned int nbits_floordiv2 = nbits // 2
     cdef PyInt p,q,e,d
     while True:
         p,q = find_p_q(nbits_floordiv2)
@@ -267,7 +274,7 @@ cpdef tuple generate_keys(const cython.ushort nbits, cython.uint exponent=DEFAUL
 
 
 
-cdef inline cython.uint gcd(PyInt p, PyInt q):
+cdef inline unsigned int gcd(PyInt p, PyInt q):
     while q != 0:
         p, q = q, p % q
     return p
@@ -294,15 +301,15 @@ class CryptoError(Exception): pass
 class DecryptionError(CryptoError): pass
 class VerificationError(CryptoError): pass
 
-cdef inline bytes _pad_for_encryption(bytes message, const cython.uint target_length):
-    cdef cython.uint max_msglength = target_length - 11
-    cdef cython.uint msglength = len(message)
+cdef inline bytes _pad_for_encryption(bytes message, const unsigned int target_length):
+    cdef unsigned int max_msglength = target_length - 11
+    cdef unsigned int msglength = len(message)
     if msglength > max_msglength:
         raise OverflowError(f'{msglength} bytes needed for message, but there is only space for {max_msglength}')
     cdef bytes padding = b''
-    cdef cython.uint padding_length = target_length - msglength - 3
+    cdef unsigned int padding_length = target_length - msglength - 3
     # not enough padding, we keep adding data until we have enough
-    cdef cython.uint needed_bytes
+    cdef unsigned int needed_bytes
     cdef bytes new_padding
     while len(padding) < padding_length:
         needed_bytes = padding_length - len(padding)
@@ -311,12 +318,12 @@ cdef inline bytes _pad_for_encryption(bytes message, const cython.uint target_le
         padding = padding + new_padding[:needed_bytes]
     assert len(padding) == padding_length # may want to keep this
     return b''.join([b'\x00\x02', padding, b'\x00', message])
-cdef inline bytes _pad_for_signing(bytes message, const cython.uint target_length):
-    cdef cython.uint max_msglength = target_length - 11
-    cdef cython.uint msglength = len(message)
+cdef inline bytes _pad_for_signing(bytes message, const unsigned int target_length):
+    cdef unsigned int max_msglength = target_length - 11
+    cdef unsigned int msglength = len(message)
     if msglength > max_msglength:
         raise OverflowError(f'{msglength} bytes needed for message, but there is only space for {max_msglength}')
-    cdef cython.uint padding_length = target_length - msglength - 3
+    cdef unsigned int padding_length = target_length - msglength - 3
     return b''.join([b'\x00\x01', padding_length * b'\xff', b'\x00', message])
 
 HASH_ASN1 = {
@@ -378,7 +385,7 @@ cpdef bytes compute_hash(object message, str method_name):
 
 
 
-cdef cython.uint DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS = 1_000_000_000
+cdef unsigned int DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS = 1_000_000_000
 
 cdef class AbstractKey:
     def __init__(self, PyInt n, PyInt e):
@@ -390,14 +397,14 @@ cdef class AbstractKey:
         self.mutex = threading.Lock()
     def __ne__(self, object other) -> bool:
         return not (self==other)
-    cpdef tuple blind(self, PyInt message, const cython.uint blind_factor_generation_attempts):
+    cpdef tuple blind(self, PyInt message, const unsigned int blind_factor_generation_attempts):
         cdef PyInt blindfac, blindfac_inverse
         blindfac, blindfac_inverse = self._update_blinding_factor(blind_factor_generation_attempts)
         cdef PyInt blinded = (message * pow(blindfac, self.e, self.n)) % self.n
         return blinded, blindfac_inverse
     cpdef PyInt unblind(self, PyInt blinded, PyInt blindfac_inverse):
         return (blindfac_inverse * blinded) % self.n
-    cpdef PyInt _initial_blinding_factor(self, const cython.uint blind_factor_generation_attempts):
+    cpdef PyInt _initial_blinding_factor(self, const unsigned int blind_factor_generation_attempts):
         cdef PyInt blind_r
         cdef PyInt n = self.n
         cdef PyInt n_minus_1 = n - 1
@@ -407,7 +414,7 @@ cdef class AbstractKey:
             if relatively_prime(n, blind_r):
                 return blind_r
         raise RuntimeError(f'Unable to initialize blinding factor; Try increasing `blind_factor_generation_attempts` past {blind_factor_generation_attempts:,}')
-    cpdef tuple _update_blinding_factor(self, const cython.uint blind_factor_generation_attempts):
+    cpdef tuple _update_blinding_factor(self, const unsigned int blind_factor_generation_attempts):
         with self.mutex:
             if self.blindfac < 0:
                 # initialize blinding factor
@@ -444,7 +451,7 @@ cdef class PublicKey(AbstractKey):
         cdef object encrypted_int = self.encrypt_int(message) # pyint
         return upy_to_bytes(encrypted_int)
     cpdef object verify_optimized(self, bytes signature, bytes cleartext): # return None
-        cdef cython.uint keylength = self.n_size
+        cdef unsigned int keylength = self.n_size
         cdef PyInt encrypted = int.from_bytes(signature, 'big', signed=False) # pyint
         cdef PyInt decrypted = decrypt_int(encrypted, self.e, self.n) # pyint
         cdef bytes clearsig = PyInt.to_bytes(decrypted, keylength, 'big', signed=False)
@@ -461,7 +468,7 @@ cdef class PublicKey(AbstractKey):
         cdef bytes cleartext = HASH_ASN1[hash_method] + message_hash
         return self.verify_optimized(signature, cleartext)
     cpdef str verify_unknown_method(self, bytes message, bytes signature):
-        cdef cython.uint keylength = self.n_size
+        cdef unsigned int keylength = self.n_size
         cdef PyInt encrypted = PyInt.from_bytes(signature, 'big', signed=False) # pyint
         cdef PyInt decrypted = decrypt_int(encrypted, self.e, self.n) # pyint
         cdef bytes clearsig = PyInt.to_bytes(decrypted, keylength, 'big', signed=False)
@@ -506,22 +513,22 @@ cdef class PrivateKey(AbstractKey):
                 self.exp1==other.exp1 and self.exp2==other.exp2 and self.coef==other.coef)
     def __hash__(self) -> int:
         return hash((self.n, self.e, self.d, self.p, self.q, self.exp1, self.exp2, self.coef))
-    cpdef PyInt blinded_decrypt(self, PyInt encrypted, cython.uint blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS): # uint
+    cpdef PyInt blinded_decrypt(self, PyInt encrypted, unsigned int blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS): # uint
         # should used the same factor
         cdef PyInt blinded, blindfac_inverse
         blinded, blindfac_inverse = self.blind(encrypted, blind_factor_generation_attempts=blind_factor_generation_attempts)
         cdef PyInt decrypted = decrypt_int(blinded, self.d, self.n)
         return self.unblind(decrypted, blindfac_inverse)
-    cpdef PyInt blinded_encrypt(self, PyInt message, cython.uint blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS): # uint
+    cpdef PyInt blinded_encrypt(self, PyInt message, unsigned int blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS): # uint
         cdef PyInt blinded, blindfac_inverse
         blinded, blindfac_inverse = self.blind(message, blind_factor_generation_attempts=blind_factor_generation_attempts)
         cdef PyInt encrypted = encrypt_int(blinded, self.d, self.n)
         return self.unblind(encrypted, blindfac_inverse)
-    cpdef bytes decrypt(self, bytes crypto, cython.uint blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS):
+    cpdef bytes decrypt(self, bytes crypto, unsigned int blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS):
         """Decrypts the given message using PKCS#1 v1.5
         raises `DecryptionError` on failure (never show the traceback!"""
         cdef PyInt encrypted = int.from_bytes(crypto, 'big', signed=False)
-        cdef cython.uint blocksize = self.n_size
+        cdef unsigned int blocksize = self.n_size
         cdef object decrypted = self.blinded_decrypt(encrypted, blind_factor_generation_attempts=blind_factor_generation_attempts) # pyint
         cdef bytes cleartext = int.to_bytes(decrypted, blocksize, 'big', signed=False)
         # Fix CVE-2020-13757 by detecting leading zeros, which are invisible when converted to in
@@ -530,28 +537,28 @@ cdef class PrivateKey(AbstractKey):
         if not hmac.compare_digest(cleartext[:2], b'\x00\x02'): # if we can't find cleartext marker we failed
             raise DecryptionError('Decryption failed')
         # Separator between padding and message
-        cdef cython.uint sep_idx = cleartext.find(b'\x00', 2)
+        cdef unsigned int sep_idx = cleartext.find(b'\x00', 2)
         # sep_idx is the index of \x00 which separates padding and message
         # padding should be >=8bytes, so the separator should be at the earliest index 10 (\x00\x02 precedes it)
         if sep_idx < 10: # sep_idx bad
             raise DecryptionError('Decryption failed')
         return cleartext[sep_idx + 1:]
-    cpdef bytes sign_hash_optimized(self, bytes cleartext, cython.uint blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS):
-        cdef cython.uint keylength = self.n_size
+    cpdef bytes sign_hash_optimized(self, bytes cleartext, unsigned int blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS):
+        cdef unsigned int keylength = self.n_size
         cdef bytes padded = _pad_for_signing(cleartext, keylength)
         cdef object payload = int.from_bytes(padded, 'big', signed=False) # pyint
         cdef object encrypted = self.blinded_encrypt(payload, blind_factor_generation_attempts=blind_factor_generation_attempts) # pyint
         cdef bytes block = int.to_bytes(encrypted, keylength, 'big', signed=False)
         return block
-    cpdef bytes sign_hash(self, bytes hash_value, str hash_method='SHA-512', cython.uint blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS):
+    cpdef bytes sign_hash(self, bytes hash_value, str hash_method='SHA-512', unsigned int blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS):
         cdef bytes cleartext = HASH_ASN1[hash_method] + hash_value
         return self.sign_hash_optimized(cleartext, blind_factor_generation_attempts=blind_factor_generation_attempts)
-    cpdef bytes sign(self, bytes message, str hash_method='SHA-512', cython.uint blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS):
+    cpdef bytes sign(self, bytes message, str hash_method='SHA-512', unsigned int blind_factor_generation_attempts=DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS):
         cdef bytes cleartext = HASH_ASN1[hash_method] + compute_hash(data, HASH_METHODS[hash_method])
         return self.sign_hash_optimized(cleartext, blind_factor_generation_attempts=blind_factor_generation_attempts)
 
 
-cpdef tuple generate(const cython.ushort nbits, cython.uint exponent=DEFAULT_EXPONENT):
+cpdef tuple generate(const cython.ushort nbits, unsigned long exponent=DEFAULT_EXPONENT):
     # """[Created 12/10/21]"""
     if nbits < 16:
         raise ValueError('Key too small')

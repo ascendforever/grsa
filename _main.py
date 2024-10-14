@@ -101,12 +101,12 @@ class PublicKeys(_RSAKeyring[backend.PublicKey]):
     def __init__(self, keys:tuple[rsa.PublicKey,...]): # noqa
         self._keys:t.Final[tuple[backend.PublicKey,...]] = keys
     @property
-    @memorize_method_first
+    # @memorize_method_first
     def max_input_size(self) -> int:
         """Equivalent to the size of the first key -11"""
         return self._keys[0].n_size-11
     @property
-    @memorize_method_first
+    # @memorize_method_first
     def output_size(self) -> int:
         """Equivalent to the size of the final key"""
         return self._keys[-1].n_size
@@ -241,7 +241,7 @@ def generate(size:int=2048, layers:int=1) -> tuple[PublicKeys, PrivateKeys]:
     size is in bits
     poolsize should be the number of processes you want or None if you want all cores to be used"""
     #                    88 because it is 11 bytes bigger each time so 88 bits
-    pub,pri = more_itertools.unzip(backend.generate(size+88*i) for i in range(layers))
+    pub,pri = zip(*(backend.generate(size+88*i) for i in range(layers)))
     return PublicKeys(tuple(pub)), PrivateKeys(tuple(pri))
 def generate_layers(first_size:int=2048, /, *sizes:int):
     sizes:list[int] = sorted([first_size, *sizes])

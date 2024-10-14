@@ -5,13 +5,13 @@
 cimport cython
 from cpython cimport int as PyInt
 
-cdef cython.ushort DEFAULT_EXPONENT = 65537
+cdef unsigned long DEFAULT_EXPONENT = 65537
 
 cdef bytes generate_random_bits(const cython.ushort nbits)
-cdef PyInt generate_random_int(const cython.ushort nbits)
+cpdef PyInt generate_random_int(const cython.ushort nbits)
 cdef PyInt generate_random_odd_int(const cython.ushort nbits)
 
-cdef cython.uchar get_primality_testing_rounds(const cython.ushort bitsize) nogil
+cdef unsigned char get_primality_testing_rounds(const cython.ushort bitsize) nogil
 cdef PyInt randint(PyInt maxvalue, cython.ushort bit_size)
 cdef cython.bint miller_rabin_primality_testing(PyInt n, PyInt k)
 cdef cython.bint is_prime(PyInt number)
@@ -20,14 +20,14 @@ cdef PyInt get_prime(cython.ushort nbits)
 cdef tuple find_p_q(cython.ushort nbits)
 cdef tuple extended_gcd(PyInt a, PyInt b)
 cdef object inverse(PyInt x, PyInt n)
-cdef tuple calculate_keys_custom_exponent(PyInt p, PyInt q, cython.uint exponent)
+cdef tuple calculate_keys_custom_exponent(PyInt p, PyInt q, unsigned int exponent)
 
-cpdef tuple generate_keys(const cython.ushort nbits, cython.uint exponent=*)
-
-
+cpdef tuple generate_keys(const cython.ushort nbits, unsigned long exponent=*)
 
 
-cdef cython.uint gcd(PyInt p, PyInt q)
+
+
+cdef unsigned int gcd(PyInt p, PyInt q)
 
 cdef cython.bint relatively_prime(PyInt p, PyInt q)
 
@@ -38,8 +38,8 @@ cdef PyInt decrypt_int(PyInt cyphertext, PyInt dkey, PyInt n)
 
 
 
-cdef bytes _pad_for_encryption(bytes message, const cython.uint target_length)
-cdef bytes _pad_for_signing(bytes message, const cython.uint target_length)
+cdef bytes _pad_for_encryption(bytes message, const unsigned int target_length)
+cdef bytes _pad_for_signing(bytes message, const unsigned int target_length)
 cdef str _find_method_hash(bytes clearsig)
 cpdef bytes compute_hash(object message, str method_name)
 
@@ -48,19 +48,19 @@ cpdef bytes compute_hash(object message, str method_name)
 
 
 
-cdef cython.uint DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS = 1_000_000_000
+cdef unsigned int DEFAULT_BLIND_FACTOR_MAX_ATTEMPTS = 1_000_000_000
 
 cdef class AbstractKey:
     cdef readonly PyInt n
     cdef readonly PyInt e
-    cdef readonly cython.uint n_size
+    cdef readonly unsigned int n_size
     cdef readonly PyInt blindfac
     cdef readonly PyInt blindfac_inverse
     cdef readonly object mutex
-    cpdef tuple blind(self, PyInt message, const cython.uint blind_factor_generation_attempts)
+    cpdef tuple blind(self, PyInt message, const unsigned int blind_factor_generation_attempts)
     cpdef PyInt unblind(self, PyInt blinded, PyInt blindfac_inverse)
-    cpdef PyInt _initial_blinding_factor(self, const cython.uint blind_factor_generation_attempts)
-    cpdef tuple _update_blinding_factor(self, const cython.uint blind_factor_generation_attempts)
+    cpdef PyInt _initial_blinding_factor(self, const unsigned int blind_factor_generation_attempts)
+    cpdef tuple _update_blinding_factor(self, const unsigned int blind_factor_generation_attempts)
 
 cdef class PublicKey(AbstractKey):
     cpdef PyInt encrypt_int(self, bytes message)
@@ -76,15 +76,12 @@ cdef class PrivateKey(AbstractKey):
     cdef readonly PyInt exp1
     cdef readonly PyInt exp2
     cdef readonly PyInt coef
-    cpdef PyInt blinded_decrypt(self, PyInt encrypted, cython.uint blind_factor_generation_attempts=*)
-    cpdef PyInt blinded_encrypt(self, PyInt message, cython.uint blind_factor_generation_attempts=*)
-    cpdef bytes decrypt(self, bytes crypto, cython.uint blind_factor_generation_attempts=*)
-    cpdef bytes sign_hash_optimized(self, bytes cleartext, cython.uint blind_factor_generation_attempts=*)
-    cpdef bytes sign_hash(self, bytes hash_value, str hash_method=*, cython.uint blind_factor_generation_attempts=*)
-    cpdef bytes sign(self, bytes message, str hash_method=*, cython.uint blind_factor_generation_attempts=*)
+    cpdef PyInt blinded_decrypt(self, PyInt encrypted, unsigned int blind_factor_generation_attempts=*)
+    cpdef PyInt blinded_encrypt(self, PyInt message, unsigned int blind_factor_generation_attempts=*)
+    cpdef bytes decrypt(self, bytes crypto, unsigned int blind_factor_generation_attempts=*)
+    cpdef bytes sign_hash_optimized(self, bytes cleartext, unsigned int blind_factor_generation_attempts=*)
+    cpdef bytes sign_hash(self, bytes hash_value, str hash_method=*, unsigned int blind_factor_generation_attempts=*)
+    cpdef bytes sign(self, bytes message, str hash_method=*, unsigned int blind_factor_generation_attempts=*)
 
 
-cpdef tuple generate(const cython.ushort nbits, cython.uint exponent=*)
-
-
-
+cpdef tuple generate(const cython.ushort nbits, unsigned long exponent=*)
